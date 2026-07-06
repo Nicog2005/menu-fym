@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FYM Restaurant — Carta</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root{
+    --bg: #f3efe7;
+    --paper: #f8f5ee;
+    --ink: #24211d;
+    --ink-soft: #6f6a61;
+    --line: #d9d2c2;
+    --accent: #b5432f;
+    --radius: 14px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body{
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Poppins', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap{
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 36px 20px 60px;
+  }
+
+  header{
+    text-align: center;
+    margin-bottom: 8px;
+  }
+
+  header h1{
+    font-family: 'Quicksand', sans-serif;
+    font-weight: 700;
+    font-size: 2.1rem;
+    letter-spacing: 1px;
+    margin: 0;
+    color: var(--ink);
+  }
+
+  header .sub{
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: 6px;
+  }
+
+  .rule{
+    height: 2px;
+    background: var(--ink);
+    width: 60px;
+    margin: 18px auto 30px;
+    border-radius: 2px;
+  }
+
+  .status{
+    text-align: center;
+    color: var(--ink-soft);
+    font-size: 0.95rem;
+    padding: 40px 0;
+  }
+
+  .status.error{
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  section.category{
+    margin-bottom: 34px;
+  }
+
+  .category h2{
+    font-family: 'Quicksand', sans-serif;
+    font-weight: 700;
+    font-size: 1.15rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin: 0 0 4px;
+    color: var(--ink);
+  }
+
+  .category .cat-rule{
+    height: 1px;
+    background: var(--line);
+    margin-bottom: 16px;
+  }
+
+  .item{
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 14px;
+    padding: 10px 0;
+    border-bottom: 1px dashed var(--line);
+  }
+
+  .item:last-child{
+    border-bottom: none;
+  }
+
+  .item-main{
+    flex: 1;
+    min-width: 0;
+  }
+
+  .item-name{
+    font-weight: 500;
+    font-size: 1rem;
+    color: var(--ink);
+  }
+
+  .item-desc{
+    font-size: 0.82rem;
+    color: var(--ink-soft);
+    margin-top: 3px;
+    font-style: italic;
+    line-height: 1.3;
+  }
+
+  .item-price{
+    font-weight: 600;
+    font-size: 1rem;
+    white-space: nowrap;
+    color: var(--ink);
+  }
+
+  footer{
+    text-align: center;
+    color: var(--ink-soft);
+    font-size: 0.75rem;
+    margin-top: 40px;
+    letter-spacing: 0.5px;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>FYM Restaurant</h1>
+    <div class="sub">Carta</div>
+  </header>
+  <div class="rule"></div>
+
+  <div id="menu-root">
+    <div class="status" id="status">Cargando la carta…</div>
+  </div>
+
+  <footer>FYM Restaurant</footer>
+</div>
+
+<script>
+// ---- CONFIG ----
+const SHEET_ID = "1KtYLN6MMZ3w4dxzE9lFr23YDugKdqu3127mCelNAzl0";
+const CATEGORIES = [
+  "ENTRANTES",
+  "ENSALADAS",
+  "BOCADILLOS FRIOS",
+  "BOCADILLOS CALIENTES",
+  "CARNE A LA BRASA",
+  "PIZZAS"
+];
+
+function sheetUrl(name){
+  return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(name)}`;
+}
+
+function findCol(fields, matchFn){
+  return fields.find(f => matchFn(f.toLowerCase()));
+}
+
+function parseItemName(raw){
+  // Split "Croquetas (Jamon, queso...)" into name + description
+  const match = raw.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+  if(match){
+    return { name: match[1].trim(), desc: match[2].trim() };
+  }
+  return { name: raw.trim(), desc: null };
+}
+
+function isAvailable(value){
+  if(value === undefined || value === null) return true;
+  const v = value.toString().trim().toLowerCase();
+  return v !== "no" && v !== "false" && v !== "0";
+}
+
+async function fetchCategory(name){
+  const res = await fetch(sheetUrl(name));
+  if(!res.ok) throw new Error(`No se pudo cargar "${name}" (${res.status})`);
+  const csvText = await res.text();
+  const parsed = Papa.parse(csvText.trim(), { header: true, skipEmptyLines: true });
+  const fields = parsed.meta.fields || [];
+
+  const nameCol = findCol(fields, f => f.includes("articulo") || f.includes("artículo") || f.includes("item"));
+  const priceCol = findCol(fields, f => f.includes("precio") || f.includes("price"));
+  const availCol = findCol(fields, f => f.includes("carta") || f.includes("disponib"));
+
+  const items = parsed.data
+    .filter(row => nameCol && row[nameCol] && row[nameCol].trim() !== "")
+    .filter(row => isAvailable(availCol ? row[availCol] : "si"))
+    .map(row => {
+      const parsedName = parseItemName(row[nameCol] || "");
+      return {
+        name: parsedName.name,
+        desc: parsedName.desc,
+        price: priceCol ? (row[priceCol] || "").trim() : ""
+      };
+    });
+
+  return { name, items };
+}
+
+function renderMenu(categories){
+  const root = document.getElementById("menu-root");
+  root.innerHTML = "";
+
+  const nonEmpty = categories.filter(c => c.items.length > 0);
+
+  if(nonEmpty.length === 0){
+    root.innerHTML = `<div class="status">La carta está vacía por ahora.</div>`;
+    return;
+  }
+
+  nonEmpty.forEach(cat => {
+    const section = document.createElement("section");
+    section.className = "category";
+
+    const h2 = document.createElement("h2");
+    h2.textContent = cat.name;
+    section.appendChild(h2);
+
+    const catRule = document.createElement("div");
+    catRule.className = "cat-rule";
+    section.appendChild(catRule);
+
+    cat.items.forEach(item => {
+      const row = document.createElement("div");
+      row.className = "item";
+
+      const main = document.createElement("div");
+      main.className = "item-main";
+
+      const nameEl = document.createElement("div");
+      nameEl.className = "item-name";
+      nameEl.textContent = item.name;
+      main.appendChild(nameEl);
+
+      if(item.desc){
+        const descEl = document.createElement("div");
+        descEl.className = "item-desc";
+        descEl.textContent = item.desc;
+        main.appendChild(descEl);
+      }
+
+      const priceEl = document.createElement("div");
+      priceEl.className = "item-price";
+      priceEl.textContent = item.price;
+
+      row.appendChild(main);
+      row.appendChild(priceEl);
+      section.appendChild(row);
+    });
+
+    root.appendChild(section);
+  });
+}
+
+async function loadMenu(){
+  try{
+    const results = await Promise.all(CATEGORIES.map(fetchCategory));
+    renderMenu(results);
+  }catch(err){
+    const root = document.getElementById("menu-root");
+    root.innerHTML = `<div class="status error">
+      No se pudo cargar la carta.<br>
+      Comprueba que la hoja de cálculo esté compartida como "cualquiera con el enlace puede ver".
+      <br><br><span style="font-size:0.75rem">${err.message}</span>
+    </div>`;
+  }
+}
+
+loadMenu();
+</script>
+
+</body>
+</html>
